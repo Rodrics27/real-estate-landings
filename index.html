@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Propiedad Exclusiva | 3D Interactive Tour</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <!-- LIBRERÍAS THREE.JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r124/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.126.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.126.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- ScrollReveal -->
+    <script src="https://unpkg.com/scrollreveal"></script>
+
+    <!-- DATOS DEL CLIENTE -->
+    <script src="data.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Montserrat"', 'sans-serif'],
+                        serif: ['"Playfair Display"', 'serif'],
+                    },
+                    colors: {
+                        slate: {
+                            base: '#383B50', 
+                            dark: '#2A2D3E',
+                            light: '#4A4E69'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* RESET & BASE */
+        *, *::after, *::before {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        body {
+            background-color: #383B50; 
+            color: #ffffff;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+
+        /* CANVAS 3D FIJO DE FONDO */
+        .webgl {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            cursor: grab;
+        }
+        
+        .webgl:active {
+            cursor: grabbing;
+        }
+
+        /* COLORES DINÁMICOS */
+        .text-accent { color: var(--accent-color, #F4A261); }
+        .bg-accent { background-color: var(--accent-color, #F4A261); }
+        .border-accent { border-color: var(--accent-color, #F4A261); }
+        .hover-bg-accent:hover { background-color: var(--accent-color, #F4A261); filter: brightness(1.1); }
+
+        /* UTILIDADES UI */
+        .glass-panel {
+            background: rgba(42, 45, 62, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s ease, background 0.3s ease;
+        }
+        .glass-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .pointer-events-none { pointer-events: none; }
+        .pointer-events-auto { pointer-events: auto; }
+
+        /* Loader */
+        #loader { position: fixed; inset: 0; background: #383B50; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s ease; }
+        .spinner { width: 50px; height: 50px; border: 3px solid rgba(255,255,255,0.1); border-radius: 50%; border-top-color: var(--accent-color, #F4A261); animation: spin 1s linear infinite; }
+        #loading-text { margin-top: 20px; font-size: 14px; font-weight: bold; letter-spacing: 2px; color: #fff; text-transform: uppercase; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #2A2D3E; }
+        ::-webkit-scrollbar-thumb { background: #4A4E69; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-color); }
+    </style>
+</head>
+<body class="antialiased selection:bg-accent selection:text-white">
+
+    <!-- Animación 3D -->
+    <canvas class="webgl"></canvas>
+
+    <!-- Pantalla de Carga -->
+    <div id="loader">
+        <div class="spinner"></div>
+        <div id="loading-text">Cargando Entorno 3D... 0%</div>
+    </div>
+
+    <!-- Navegación -->
+    <nav id="navbar" class="fixed w-full z-50 transition-all duration-300 py-6 px-6 md:px-12 flex justify-between items-center bg-transparent pointer-events-auto">
+        <div class="font-serif text-2xl font-bold tracking-widest text-white" id="nav-title"></div>
+        
+        <div class="hidden md:flex space-x-8 text-sm font-semibold tracking-widest uppercase items-center">
+            <a href="#home" class="text-white/70 hover:text-white transition-colors">Inicio</a>
+            <a href="#video-tour" class="text-white/70 hover:text-white transition-colors">Video</a>
+            <a href="#gallery" class="text-white/70 hover:text-white transition-colors">Galería</a>
+            <a href="#contact" class="bg-accent text-slate-dark px-6 py-2 rounded-sm hover-bg-accent transition-all font-bold">Contactar</a>
+        </div>
+        <button class="md:hidden text-white text-2xl"><i class="fas fa-bars"></i></button>
+    </nav>
+
+    <!-- Hero Section -->
+    <header id="home" class="relative h-screen flex items-center pointer-events-none">
+        <div class="absolute inset-0 bg-gradient-to-r from-slate-base via-slate-base/80 to-transparent w-full md:w-2/3 lg:w-1/2 z-10 pointer-events-none"></div>
+        
+        <div class="relative z-20 px-6 md:px-12 lg:px-24 w-full md:w-2/3 lg:w-1/2 pointer-events-auto">
+            <div class="mb-4 animate-fade-in-up">
+                <span class="text-xs font-bold tracking-widest text-accent uppercase flex items-center gap-2">
+                    <i class="fas fa-map-marker-alt"></i> <span id="hero-location"></span>
+                </span>
+            </div>
+            
+            <h1 id="hero-title" class="font-serif text-5xl md:text-7xl font-bold text-white leading-tight mb-6 animate-fade-in-up" style="animation-delay: 0.2s"></h1>
+            
+            <p id="hero-subtitle" class="text-lg font-light text-white/80 mb-8 animate-fade-in-up" style="animation-delay: 0.4s"></p>
+            
+            <div class="flex flex-col sm:flex-row items-center gap-6 animate-fade-in-up" style="animation-delay: 0.6s">
+                <p id="hero-price" class="text-3xl font-serif font-bold text-accent"></p>
+                <div class="hidden sm:block w-[1px] h-10 bg-white/20"></div>
+                <button onclick="openVideoModal()" class="w-full sm:w-auto border border-white/30 text-white px-8 py-3 rounded-sm font-bold tracking-widest uppercase hover:bg-white hover:text-slate-dark transition-colors duration-300 flex items-center justify-center gap-3">
+                    <i class="fas fa-play"></i> Ver Recorrido
+                </button>
+            </div>
+            
+            <div class="mt-12 text-sm text-white/50 flex items-center gap-3 animate-fade-in-up" style="animation-delay: 0.8s">
+                <i class="fas fa-hand-pointer text-accent animate-bounce"></i>
+                <span>Haz clic y arrastra para explorar el modelo 3D</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="relative z-20 bg-slate-base">
+        
+        <!-- Stats Section -->
+        <section class="glass-panel py-10 relative">
+            <div class="container mx-auto px-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x divide-white/10" id="stats-container">
+                </div>
+            </div>
+        </section>
+
+        <!-- Video Tour -->
+        <section id="video-tour" class="py-24 relative bg-slate-dark">
+            <div class="container mx-auto px-6 max-w-7xl">
+                <div class="flex flex-col lg:flex-row items-center gap-16">
+                    <div class="w-full lg:w-1/2 reveal-left">
+                        <h2 class="font-serif text-4xl md:text-5xl font-bold text-white mb-6" id="video-title"></h2>
+                        <p class="text-white/70 mb-8 font-light leading-relaxed text-lg" id="video-desc"></p>
+                        <div class="border-l-2 border-accent pl-6">
+                            <ul class="space-y-4" id="video-features"></ul>
+                        </div>
+                    </div>
+                    <div class="w-full lg:w-1/2 reveal-right">
+                        <!-- El contenedor ahora tiene fondo negro y el thumbnail usa object-contain -->
+                        <div class="relative rounded-sm overflow-hidden group cursor-pointer shadow-2xl bg-black" onclick="openVideoModal()">
+                            <img id="video-thumb" src="" class="w-full aspect-video object-contain opacity-80 group-hover:opacity-60 transition-opacity duration-500" alt="Video">
+                            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div class="w-20 h-20 rounded-full bg-accent text-slate-dark flex items-center justify-center transform group-hover:scale-110 transition duration-300 shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+                                    <i class="fas fa-play text-2xl ml-1"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Modales reconstruidos de manera super estable -->
+        <!-- VIDEO MODAL -->
+        <div id="video-modal" class="fixed inset-0 bg-black/95 flex-col items-center justify-center p-4 md:p-8 pointer-events-auto" style="z-index: 99999; display: none;">
+            <!-- Capa invisible para cerrar al hacer clic afuera -->
+            <div class="absolute inset-0 z-0 cursor-pointer" onclick="closeVideoModal()"></div>
+            
+            <!-- Contenedor principal -->
+            <div class="relative z-10 w-full max-w-5xl flex flex-col items-end">
+                <!-- Botón X Integrado arriba del video -->
+                <button onclick="closeVideoModal()" class="mb-4 text-white hover:text-accent bg-white/10 hover:bg-white/20 border border-white/20 rounded-full w-12 h-12 flex items-center justify-center transition-all cursor-pointer shadow-lg">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+                
+                <!-- Contenedor del video adaptable -->
+                <video id="main-video" controls class="w-full max-h-[75vh] object-contain rounded-lg shadow-2xl bg-black">
+                    <source id="video-source" src="" type="video/mp4">
+                </video>
+            </div>
+        </div>
+
+        <!-- IMAGE MODAL -->
+        <div id="image-modal" class="fixed inset-0 bg-black/95 flex-col items-center justify-center p-4 md:p-8 pointer-events-auto transition-opacity duration-300 opacity-0" style="z-index: 99999; display: none;">
+            <!-- Capa invisible para cerrar al hacer clic afuera -->
+            <div class="absolute inset-0 z-0 cursor-pointer" onclick="closeImageModal()"></div>
+            
+            <!-- Contenedor principal -->
+            <div class="relative z-10 w-full max-w-5xl flex flex-col items-end">
+                <!-- Botón X Integrado arriba de la imagen -->
+                <button onclick="closeImageModal()" class="mb-4 text-white hover:text-accent bg-white/10 hover:bg-white/20 border border-white/20 rounded-full w-12 h-12 flex items-center justify-center transition-all cursor-pointer shadow-lg">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+                
+                <!-- Contenedor de la imagen adaptable -->
+                <img id="modal-image" src="" class="w-full max-h-[75vh] object-contain rounded-lg shadow-2xl pointer-events-none bg-black/50">
+            </div>
+        </div>
+
+        <!-- Highlights -->
+        <section id="details" class="py-24 bg-slate-base">
+            <div class="container mx-auto px-6 max-w-7xl">
+                <div class="text-center mb-16 reveal-bottom">
+                    <span class="text-accent tracking-widest uppercase text-sm font-bold">Arquitectura Interior</span>
+                    <h2 class="font-serif text-4xl md:text-5xl font-bold text-white mt-4">Nivel de Detalle Absoluto</h2>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8" id="highlights-container">
+                </div>
+            </div>
+        </section>
+
+        <!-- Gallery -->
+        <section id="gallery" class="py-24 bg-slate-dark">
+            <div class="container mx-auto px-6 max-w-7xl">
+                <h2 class="font-serif text-4xl font-bold text-white text-center mb-16 reveal-bottom">Galería de Espacios</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="gallery-grid">
+                </div>
+            </div>
+        </section>
+
+        <!-- Contact & Form -->
+        <section id="contact" class="bg-slate-base border-t border-white/5">
+            <div class="flex flex-col lg:flex-row">
+                <div class="w-full lg:w-1/2 p-10 md:p-16 lg:p-24 flex items-center">
+                    <div class="w-full max-w-md mx-auto">
+                        <span class="text-accent uppercase tracking-widest text-xs font-bold mb-2 block">Contacto Inmobiliario</span>
+                        <h2 class="font-serif text-4xl font-bold text-white mb-8">Agendar Visita</h2>
+                        
+                        <form class="space-y-6" onsubmit="event.preventDefault(); window.open(whatsappLink, '_blank');">
+                            <div>
+                                <input type="text" class="w-full bg-slate-dark border border-white/10 rounded-sm py-4 px-4 text-white focus:outline-none focus:border-accent transition-colors placeholder-white/40" placeholder="Nombre Completo" required>
+                            </div>
+                            <div>
+                                <input type="tel" class="w-full bg-slate-dark border border-white/10 rounded-sm py-4 px-4 text-white focus:outline-none focus:border-accent transition-colors placeholder-white/40" placeholder="Teléfono Móvil" required>
+                            </div>
+                            <button type="submit" class="w-full bg-accent text-slate-dark py-4 rounded-sm font-bold tracking-widest uppercase hover:bg-white transition-colors duration-300 mt-8 flex justify-center items-center gap-2">
+                                <i class="fab fa-whatsapp text-xl"></i> Contactar vía WhatsApp
+                            </button>
+                            <p class="text-center text-xs text-white/40 mt-4">Agente a cargo: <span id="btn-agent-name" class="font-bold text-white/70"></span></p>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="w-full lg:w-1/2 h-[400px] lg:h-auto relative">
+                    <img id="map-image" src="" class="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-luminosity">
+                    <div class="absolute inset-0 bg-accent/10 mix-blend-color"></div>
+                    <div class="absolute inset-0 z-20 flex items-center justify-center p-8 pointer-events-none">
+                        <div class="glass-card p-8 rounded-sm text-center max-w-sm pointer-events-auto">
+                            <i class="fas fa-map-marker-alt text-3xl text-accent mb-4"></i>
+                            <p class="font-serif font-bold text-white text-2xl mb-2">Ubicación</p>
+                            <p class="text-white/70 text-sm" id="map-location-text"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="bg-slate-dark text-white/40 py-10 text-center text-sm border-t border-white/5">
+            <div class="container mx-auto px-6">
+                <p class="font-serif font-bold text-white/70 text-xl mb-2" id="footer-title"></p>
+                <p>&copy; 2026 Marketing VisualProp</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- BOTÓN WHATSAPP FLOTANTE -->
+    <a id="whatsapp-float" href="#" target="_blank" class="fixed bottom-6 right-6 md:bottom-8 md:right-8 z-[90] pointer-events-auto bg-[#25D366] text-white w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(37,211,102,0.4)] hover:shadow-[0_0_35px_rgba(37,211,102,0.6)] hover:scale-110 transition-all duration-300 group">
+        <i class="fab fa-whatsapp text-3xl md:text-4xl"></i>
+        <!-- Tooltip -->
+        <span class="absolute right-full mr-4 bg-white text-gray-800 text-sm font-bold py-2 px-4 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap pointer-events-none">
+            ¡Hablemos ahora!
+        </span>
+    </a>
+
+    <!-- LÓGICA DE LA PLANTILLA Y THREE.JS -->
+    <script>
+        // --- 1. INYECTAR DATOS DESDE data.js CON FALLBACK SÓLIDO ---
+        function initDataInjection() {
+            if (typeof propertyData === 'undefined') {
+                console.warn('Cargando datos de prueba.');
+                window.propertyData = {
+                    title: "Residencia Los Olivos",
+                    subtitle: "Vanguardia y Naturaleza",
+                    location: "Lo Barnechea, Santiago",
+                    price: "UF 25.000",
+                    accentColor: "#F4A261", 
+                    agentName: "VisualProp",
+                    agentPhone: "56912345678",
+                    agentMessage: "Hola, quiero agendar una visita.",
+                    stats: { built: "850", bedrooms: "5", bathrooms: "6", land: "2.500" },
+                    descriptions: {
+                        videoTitle: "Recorrido Cinematográfico",
+                        videoText: "Experimenta la fluidez de los espacios en esta propiedad exclusiva.",
+                        featuresList: ["Domótica Integral", "Cocina Gourmet", "Spa Privado"]
+                    },
+                    highlights: [
+                        { icon: "fas fa-water", title: "Piscina Infinita", desc: "Vista panorámica a la cordillera." },
+                        { icon: "fas fa-wine-glass-alt", title: "Cava Subterránea", desc: "Capacidad para 500 botellas." },
+                        { icon: "fas fa-shield-alt", title: "Seguridad Total", desc: "Cámaras 4K y acceso biométrico." }
+                    ],
+                    media: {
+                        // VIDEO: Servidor público de Google altamente fiable
+                        video: "/videos/1234.mp4",
+                        // IMÁGENES: Enlaces puros de Unsplash garantizados que no caducan
+                        videoThumbnail: "/fotos/tum.jpg",
+                        gallery: [
+                            { src: "/fotos/1.jpg", label: "Living Principal" },
+                            { src: "/fotos/2.jpg", label: "Cocina Integrada" },
+                            { src: "/fotos/3.jpg", label: "Baño Suite" },
+                            { src: "/fotos/4.jpg", label: "Exterior" }
+                        ],
+                        mapImage: "https://images.unsplash.com/photo-1524661135-423995f22d0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+                    }
+                };
+            }
+
+            const defaultAccent = "#F4A261"; 
+            document.documentElement.style.setProperty('--accent-color', propertyData.accentColor || defaultAccent);
+            
+            document.title = propertyData.title + " | 3D Tour";
+            
+            const titleParts = propertyData.title.split(" ");
+            const styledTitle = titleParts.length > 1 
+                ? `${titleParts[0]} <span class="text-accent">${titleParts.slice(1).join(" ")}</span>`
+                : propertyData.title;
+                
+            document.getElementById('nav-title').innerHTML = styledTitle;
+            document.getElementById('footer-title').innerHTML = styledTitle;
+            
+            document.getElementById('hero-location').innerText = propertyData.location;
+            document.getElementById('hero-title').innerHTML = styledTitle.replace('<span', '<br><span');
+            document.getElementById('hero-subtitle').innerText = propertyData.subtitle;
+            document.getElementById('hero-price').innerText = propertyData.price;
+
+            const vidTitleParts = propertyData.descriptions.videoTitle.split(" ");
+            document.getElementById('video-title').innerHTML = vidTitleParts[0] + (vidTitleParts[1] ? ` <span class="text-accent italic">${vidTitleParts.slice(1).join(" ")}</span>` : "");
+            
+            document.getElementById('video-desc').innerText = propertyData.descriptions.videoText;
+            document.getElementById('map-location-text').innerText = propertyData.location;
+            document.getElementById('btn-agent-name').innerText = propertyData.agentName;
+
+            document.getElementById('stats-container').innerHTML = `
+                <div class="p-2"><span class="block font-serif text-3xl font-bold text-white mb-1">${propertyData.stats.built}</span><span class="text-[10px] md:text-xs text-accent uppercase tracking-widest font-bold">M² Const.</span></div>
+                <div class="p-2"><span class="block font-serif text-3xl font-bold text-white mb-1">${propertyData.stats.bedrooms}</span><span class="text-[10px] md:text-xs text-accent uppercase tracking-widest font-bold">Dorms.</span></div>
+                <div class="p-2"><span class="block font-serif text-3xl font-bold text-white mb-1">${propertyData.stats.bathrooms}</span><span class="text-[10px] md:text-xs text-accent uppercase tracking-widest font-bold">Baños</span></div>
+                <div class="p-2"><span class="block font-serif text-3xl font-bold text-white mb-1">${propertyData.stats.land}</span><span class="text-[10px] md:text-xs text-accent uppercase tracking-widest font-bold">M² Terreno</span></div>
+            `;
+
+            document.getElementById('video-features').innerHTML = propertyData.descriptions.featuresList.map(item => 
+                `<li class="flex items-center gap-3 text-white/80"><i class="fas fa-check text-accent text-sm"></i> <span>${item}</span></li>`
+            ).join('');
+
+            document.getElementById('highlights-container').innerHTML = propertyData.highlights.map(item => `
+                <div class="glass-card p-8 rounded-sm reveal-bottom">
+                    <i class="${item.icon} text-3xl text-accent mb-6"></i>
+                    <h3 class="font-serif font-bold text-xl mb-3 text-white">${item.title}</h3>
+                    <p class="text-white/60 text-sm leading-relaxed">${item.desc}</p>
+                </div>
+            `).join('');
+
+            const gal = propertyData.media.gallery;
+            document.getElementById('gallery-grid').innerHTML = gal.map(img => `
+                <div class="h-64 rounded-sm overflow-hidden relative group reveal-bottom cursor-pointer shadow-lg" onclick="openImageModal('${img.src}')">
+                    <img src="${img.src}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
+                    <div class="absolute inset-0 bg-slate-dark/50 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col items-center justify-center p-6 text-center">
+                        <i class="fas fa-search-plus text-3xl text-white mb-2 transform scale-50 group-hover:scale-100 transition-transform duration-300"></i>
+                        <span class="text-white font-bold tracking-widest uppercase text-xs border border-white/50 px-4 py-2">${img.label}</span>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('video-thumb').src = propertyData.media.videoThumbnail;
+            // Añadimos el thumbnail como 'poster' del video para que se vea mientras carga
+            document.getElementById('main-video').poster = propertyData.media.videoThumbnail;
+            document.getElementById('map-image').src = propertyData.media.mapImage;
+            document.getElementById('video-source').src = propertyData.media.video;
+            document.getElementById('main-video').load();
+
+            window.whatsappLink = `https://wa.me/${propertyData.agentPhone}?text=${encodeURIComponent(propertyData.agentMessage)}`;
+            document.getElementById('whatsapp-float').href = window.whatsappLink;
+        }
+
+        // --- 2. THREE.JS ROOM ---
+        function initInteractiveRoom() {
+            const canvas = document.querySelector('.webgl');
+            const scene = new THREE.Scene();
+            const textureLoader = new THREE.TextureLoader();
+            const sizes = { width: window.innerWidth, height: window.innerHeight };
+
+            const camera = new THREE.PerspectiveCamera(30, sizes.width / sizes.height, 0.1, 100);
+            const controls = new THREE.OrbitControls(camera, canvas);
+            
+            if(window.innerWidth < 768) {
+                camera.position.set(30, 20, 30); 
+                controls.minDistance = 15;
+                controls.maxDistance = 35;
+            } else {
+                camera.position.set(18, 10, 20);
+                controls.minDistance = 10;
+                controls.maxDistance = 20;
+            }
+            scene.add(camera);
+
+            controls.enableDamping = true;
+            controls.enableZoom = false; 
+            controls.enablePan = false;
+            controls.minPolarAngle = Math.PI / 4;
+            controls.maxPolarAngle = Math.PI / 2.25;
+            controls.minAzimuthAngle = - Math.PI / 16; 
+            controls.maxAzimuthAngle = Math.PI / 2;
+
+            const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+            renderer.setSize(sizes.width, sizes.height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputEncoding = THREE.sRGBEncoding;
+
+            const bakedTexture = textureLoader.load('https://rawcdn.githack.com/ricardoolivaalonso/ThreeJS-Room01/98fd8d7909308ec03a596928a394bb25ed9239f1/baked.jpg');
+            bakedTexture.flipY = false;
+            bakedTexture.encoding = THREE.sRGBEncoding;
+
+            const bakedMaterial = new THREE.MeshBasicMaterial({ map: bakedTexture, side: THREE.DoubleSide });
+
+            const loader = new THREE.GLTFLoader();
+            const loadingText = document.getElementById('loading-text');
+
+            loader.load('https://rawcdn.githack.com/ricardoolivaalonso/ThreeJS-Room01/98fd8d7909308ec03a596928a394bb25ed9239f1/THREEJS2.glb',
+                (gltf) => {
+                    const model = gltf.scene;
+                    model.traverse( child => child.material = bakedMaterial );
+                    
+                    if(window.innerWidth < 768) {
+                        scene.position.set(0, -2, 0); 
+                    } else {
+                        scene.position.set(2, -2, 0); 
+                    }
+                    
+                    scene.add(model);
+                    
+                    const loaderEl = document.getElementById('loader');
+                    loaderEl.style.opacity = '0';
+                    setTimeout(() => { loaderEl.style.display = 'none'; }, 500);
+                },
+                ( xhr ) => {
+                    const percent = Math.round(( xhr.loaded / xhr.total * 100 ));
+                    loadingText.innerText = `Cargando Modelo 3D... ${percent}%`;
+                }
+            );
+
+            window.addEventListener('resize', () => {
+                sizes.width = window.innerWidth;
+                sizes.height = window.innerHeight;
+                camera.aspect = sizes.width / sizes.height;
+                
+                if(window.innerWidth < 768) {
+                    scene.position.set(0, -2, 0);
+                } else {
+                    scene.position.set(2, -2, 0);
+                }
+
+                camera.updateProjectionMatrix();
+                renderer.setSize(sizes.width, sizes.height);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            });
+
+            const tick = () => {
+                controls.update();
+                renderer.render(scene, camera);
+                window.requestAnimationFrame(tick);
+            }
+            tick();
+        }
+
+        // --- 3. FUNCIONES UI Y MODALES (Totalmente Reparados) ---
+        function openVideoModal() {
+            document.getElementById('video-modal').style.display = 'flex';
+            document.getElementById('whatsapp-float').style.display = 'none'; // Ocultar WhatsApp para no tapar controles
+            document.body.style.overflow = 'hidden'; // Bloquear scroll
+            
+            const video = document.getElementById('main-video');
+            const playPromise = video.play();
+            
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.warn("Reproducción abortada de forma segura:", error);
+                });
+            }
+        }
+
+        function closeVideoModal() {
+            document.getElementById('video-modal').style.display = 'none';
+            document.getElementById('whatsapp-float').style.display = 'flex'; // Mostrar WhatsApp
+            document.body.style.overflow = ''; // Restaurar scroll
+            const video = document.getElementById('main-video');
+            video.pause();
+            video.currentTime = 0;
+        }
+
+        function openImageModal(src) {
+            const modal = document.getElementById('image-modal');
+            const img = document.getElementById('modal-image');
+            img.src = src;
+            modal.style.display = 'flex';
+            document.getElementById('whatsapp-float').style.display = 'none'; // Ocultar WhatsApp
+            
+            void modal.offsetWidth; 
+            modal.classList.remove('opacity-0');
+            document.body.style.overflow = 'hidden'; 
+        }
+
+        function closeImageModal() {
+            const modal = document.getElementById('image-modal');
+            modal.classList.add('opacity-0');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                document.getElementById('whatsapp-float').style.display = 'flex'; // Mostrar WhatsApp
+                document.body.style.overflow = '';
+            }, 300);
+        }
+
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 50) { 
+                nav.classList.add('glass-panel'); 
+                nav.classList.remove('bg-transparent', 'py-6');
+                nav.classList.add('py-4');
+            } else { 
+                nav.classList.remove('glass-panel', 'py-4'); 
+                nav.classList.add('bg-transparent', 'py-6');
+            }
+        });
+
+        window.addEventListener('load', () => {
+            initDataInjection();
+            initInteractiveRoom(); 
+        });
+
+        ScrollReveal().reveal('.reveal-bottom', { origin: 'bottom', distance: '40px', duration: 800, delay: 100, reset: false });
+        ScrollReveal().reveal('.reveal-left', { origin: 'left', distance: '40px', duration: 800, delay: 100 });
+        ScrollReveal().reveal('.reveal-right', { origin: 'right', distance: '40px', duration: 800, delay: 100 });
+    </script>
+</body>
+</html>
